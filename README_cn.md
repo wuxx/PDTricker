@@ -18,7 +18,7 @@ PDTricker 是MuseLab设计的PD诱骗工具，使用沁恒的ch224k和ch552t实�
 输入和输出均使用TYPE-C接口，输出可通过焊盘输出，也可使用TYPE-C线转鳄鱼夹，最大可承受5A电流，更方便日常的使用  
 
 # 产品链接
-[PDTricker Board](https://www.aliexpress.com/item/1005003618669159.html?spm=5261.ProductManageOnline.0.0.7b284edfMi8J4H)
+[PDTricker Board](https://item.taobao.com/item.htm?spm=a1z10.3-c.w4002-21349689064.9.1a33773djbHzcM&id=672083587030)
 
 # 参考
 ### wch

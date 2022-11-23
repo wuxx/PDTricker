@@ -15,7 +15,10 @@ PDTricker is a simple PD trigger tool build with wch ch224k and ch552t, it suppo
 </div>
 
 # Product Link
-[ESPLink Board](https://www.aliexpress.com/item/1005003618669159.html?spm=5261.ProductManageOnline.0.0.7b284edfMi8J4H)
+- aliexpress
+[PDTricker Board](https://www.aliexpress.com/item/1005004835450194.html?spm=a2g0o.productlist.0.0.79e27651KZikpg&algo_pvid=ef2d20e1-8533-4ab6-935f-0eff28aba869&algo_exp_id=ef2d20e1-8533-4ab6-935f-0eff28aba869-0&pdp_ext_f=%7B%22sku_id%22%3A%2212000030671927494%22%7D&pdp_npi=2%40dis%21USD%215.0%215.0%21%21%21%21%21%402132f35016691733010651616ea925%2112000030671927494%21sea&curPageLogUid=ZTLDfY8k539M&gatewayAdapt=4itemAdapt)
+- tindie
+[PDTricker Board](https://www.tindie.com/products/johnnywu/pdtricker-fast-charge-deception-tool/)
 
 # Reference
 ### wch
