@@ -1,0 +1,1 @@
+"Public\DataFlash.C" LARGE OPTIMIZE (8,SPEED) BROWSE DEBUG OBJECTEXTEND PRINT(.\DataFlash.lst) OBJECT(DataFlash.obj)

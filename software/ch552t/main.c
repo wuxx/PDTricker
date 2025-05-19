@@ -6,6 +6,7 @@
 #include "Public\GPIO.H"
 #include "Public\DEBUG.H"
 
+
 void led_all_off();    
 void led_off(UINT8 value);
 void led_set(UINT8 value, UINT8 blink);
@@ -35,6 +36,78 @@ sbit CFG_1 = P3^3;
 sbit CFG_2 = P3^4;
 sbit CFG_3 = P3^5;
 
+
+/*******************************************************************************/
+/*******************************************************************************/
+
+/*******************************************************************************
+* Function Name  : WriteDataFlash(UINT8 Addr,PUINT8 buf,UINT8 len)
+* Description    : DataFlash写
+* Input          : UINT8 Addr，PUINT16 buf,UINT8 len
+* Output         : None
+* Return         : UINT8 i 返回写入长度
+*******************************************************************************/
+UINT8 WriteDataFlash(UINT8 Addr,PUINT8 buf,UINT8 len)
+{
+    UINT8 i;
+    SAFE_MOD = 0x55;
+    SAFE_MOD = 0xAA;                                                           //进入安全模式
+    GLOBAL_CFG |= bDATA_WE;                                                    //使能DataFlash写
+    SAFE_MOD = 0;                                                              //退出安全模式	
+		ROM_ADDR_H = DATA_FLASH_ADDR >> 8;
+    Addr <<= 1;
+    for(i=0;i<len;i++)
+	  {
+        ROM_ADDR_L = Addr + i*2;
+        ROM_DATA_L = *(buf+i);			
+        if ( ROM_STATUS & bROM_ADDR_OK ) {                                     // 操作地址有效
+           ROM_CTRL = ROM_CMD_WRITE;                                           // 写入
+        }
+        if((ROM_STATUS ^ bROM_ADDR_OK) > 0) return i;                          // 返回状态,0x00=success,  0x02=unknown command(bROM_CMD_ERR)
+	  }
+    SAFE_MOD = 0x55;
+    SAFE_MOD = 0xAA;                                                           //进入安全模式
+    GLOBAL_CFG &= ~bDATA_WE;                                                   //开启DataFlash写保护
+    SAFE_MOD = 0;                                                              //退出安全模式	
+    return i;		
+}
+
+/*******************************************************************************
+* Function Name  : ReadDataFlash(UINT8 Addr,UINT8 len,PUINT8 buf)
+* Description    : 读DataFlash
+* Input          : UINT8 Addr UINT8 len PUINT8 buf
+* Output         : None
+* Return         : UINT8 i 返回写入长度
+*******************************************************************************/
+UINT8 ReadDataFlash(UINT8 Addr,UINT8 len,PUINT8 buf)
+{
+    UINT8 i;
+    ROM_ADDR_H = DATA_FLASH_ADDR >> 8;
+    Addr <<= 1;
+    for(i=0;i<len;i++){
+	  ROM_ADDR_L = Addr + i*2;                                                   //Addr必须为偶地址
+	  ROM_CTRL = ROM_CMD_READ;
+//     if ( ROM_STATUS & bROM_CMD_ERR ) return( 0xFF );                        // unknown command
+	  *(buf+i) = ROM_DATA_L;
+		}
+    return i;
+}
+
+UINT8 pd_config_read()
+{
+    UINT8 pc;
+    
+    ReadDataFlash(0x0, 1, &pc);
+    return pc;
+}
+
+void pd_config_update(UINT8 pc)
+{
+    WriteDataFlash(0x0, &pc, 1);
+}
+
+/*******************************************************************************/
+/*******************************************************************************/
 
 /* TX:  P3.1/PWM2/TXD */
 /* RX:  P3.0/PWM1/RXD */
@@ -276,13 +349,20 @@ UINT16 key_read()
 main()
 {
     UINT16 i, curr_key, prev_key;
-    UINT16 curr_pd = PD_5V;
+    UINT16 curr_pd = pd_config_read();
     UINT32 loop = 0;
 
 	CfgFsys();	
 	mInitSTDIO();
     printf("\r\nPDTricker system buildtime [" __TIME__ " " __DATE__ "] " "rev     1.0\r\n");
-
+    printf("curr_pd: %d\n", curr_pd);
+    
+    if (curr_pd == 255) {
+        pd_config_update(PD_5V);
+        curr_pd = pd_config_read();
+        printf("factory init: curr_pd: %d\n", curr_pd);
+    }
+        
 #if 0
     printf("T0 Test ...\n"); 
     mTimer0Clk12DivFsys();	                                                   // 12MHz / 12 = 1MHz
@@ -302,6 +382,26 @@ main()
 
     i = 0;
     
+#if 0
+    while(1){
+      for(i=0;i<128;i++){	                                                     //????128??		
+        len = WriteDataFlash(i,&i,1);                                          //?DataFlash??????i??i
+        if(len != 1){
+          printf("Write Err ? = %02x,m = %02x\n",j,(UINT16)m);                //?????				
+        }
+      }
+      for(i=0;i<128;i++){                                                      //?DataFlash??????i???
+        len = ReadDataFlash(i,1,&m);
+        if((len != 1) ||(m != i)){
+          printf("Read Err ? = %02x, = %02x,addr =%02x ,?= %02x\n",j,(UINT16)(i*2),(UINT16)ROM_DATA_L,(UINT16)m);				
+        }                                                                      //???????
+      }  
+      printf("$$OK %02x \n",j);			
+      j++;
+      mDelaymS(100);			
+    }    
+#endif
+    
 	while ( 1 ) {
 
         prev_key = curr_key;
@@ -316,6 +416,7 @@ main()
 
             printf("pd_set %d\n", curr_pd);
             pd_set(curr_pd);
+            pd_config_update(curr_pd);
 
         }
 

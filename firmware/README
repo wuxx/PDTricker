@@ -1,0 +1,3 @@
+v1.1
+增加记忆功能，上电后立即切换到上一次配置的电压
+Add power config memory function, switch to the last configured voltage immediately after power-on

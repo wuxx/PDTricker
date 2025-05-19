@@ -1,0 +1,476 @@
+C51 COMPILER V9.00   MAIN                                                                  05/19/2025 14:37:56 PAGE 1   
+
+
+C51 COMPILER V9.00, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN main.OBJ
+COMPILER INVOKED BY: D:\Keil_v5\C51\BIN\C51.EXE main.c LARGE OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND
+
+line level    source
+
+   1          #include "stdio.h"
+   2          #include "CH552.H"
+   3          
+   4          #include "Public\TIMER.H"
+   5          #include "Public\ADC.H"
+   6          #include "Public\GPIO.H"
+   7          #include "Public\DEBUG.H"
+   8          
+   9          
+  10          void led_all_off();    
+  11          void led_off(UINT8 value);
+  12          void led_set(UINT8 value, UINT8 blink);
+  13          UINT16 adc_read();
+  14          int pd_verify(UINT8 value);
+  15          
+  16          enum {
+  17              PD_5V = 0,
+  18              PD_9V,
+  19              PD_12V,
+  20              PD_15V,
+  21              PD_20V,
+  22              PD_MAX,
+  23          };
+  24          
+  25          unsigned int x=0;
+  26          
+  27          sbit  KEY = P1^0;
+  28          
+  29          sbit LED_5V  = P3^2;
+  30          sbit LED_9V  = P1^4;
+  31          sbit LED_12V = P1^5;
+  32          sbit LED_15V = P1^6;
+  33          sbit LED_20V = P1^7;
+  34          
+  35          sbit CFG_1 = P3^3;
+  36          sbit CFG_2 = P3^4;
+  37          sbit CFG_3 = P3^5;
+  38          
+  39          
+  40          /*******************************************************************************/
+  41          /*******************************************************************************/
+  42          
+  43          /*******************************************************************************
+  44          * Function Name  : WriteDataFlash(UINT8 Addr,PUINT8 buf,UINT8 len)
+  45          * Description    : DataFlash写
+  46          * Input          : UINT8 Addr，PUINT16 buf,UINT8 len
+  47          * Output         : None
+  48          * Return         : UINT8 i 返回写入长度
+  49          *******************************************************************************/
+  50          UINT8 WriteDataFlash(UINT8 Addr,PUINT8 buf,UINT8 len)
+  51          {
+  52   1          UINT8 i;
+  53   1          SAFE_MOD = 0x55;
+  54   1          SAFE_MOD = 0xAA;                                                           //进入安全模式
+  55   1          GLOBAL_CFG |= bDATA_WE;                                                    //使能DataFlash写
+C51 COMPILER V9.00   MAIN                                                                  05/19/2025 14:37:56 PAGE 2   
+
+  56   1          SAFE_MOD = 0;                                                              //退出安全模式   
+  57   1                      ROM_ADDR_H = DATA_FLASH_ADDR >> 8;
+  58   1          Addr <<= 1;
+  59   1          for(i=0;i<len;i++)
+  60   1                {
+  61   2              ROM_ADDR_L = Addr + i*2;
+  62   2              ROM_DATA_L = *(buf+i);                  
+  63   2              if ( ROM_STATUS & bROM_ADDR_OK ) {                                     // 操作地址有效
+  64   3                 ROM_CTRL = ROM_CMD_WRITE;                                           // 写入
+  65   3              }
+  66   2              if((ROM_STATUS ^ bROM_ADDR_OK) > 0) return i;                          // 返回状态,0x00=success,  
+             -0x02=unknown command(bROM_CMD_ERR)
+  67   2                }
+  68   1          SAFE_MOD = 0x55;
+  69   1          SAFE_MOD = 0xAA;                                                           //进入安全模式
+  70   1          GLOBAL_CFG &= ~bDATA_WE;                                                   //开启DataFlash写保护
+  71   1          SAFE_MOD = 0;                                                              //退出安全模式   
+  72   1          return i;           
+  73   1      }
+  74          
+  75          /*******************************************************************************
+  76          * Function Name  : ReadDataFlash(UINT8 Addr,UINT8 len,PUINT8 buf)
+  77          * Description    : 读DataFlash
+  78          * Input          : UINT8 Addr UINT8 len PUINT8 buf
+  79          * Output         : None
+  80          * Return         : UINT8 i 返回写入长度
+  81          *******************************************************************************/
+  82          UINT8 ReadDataFlash(UINT8 Addr,UINT8 len,PUINT8 buf)
+  83          {
+  84   1          UINT8 i;
+  85   1          ROM_ADDR_H = DATA_FLASH_ADDR >> 8;
+  86   1          Addr <<= 1;
+  87   1          for(i=0;i<len;i++){
+  88   2                ROM_ADDR_L = Addr + i*2;                                                   //Addr必须为偶地址
+  89   2                ROM_CTRL = ROM_CMD_READ;
+  90   2      //     if ( ROM_STATUS & bROM_CMD_ERR ) return( 0xFF );                        // unknown command
+  91   2                *(buf+i) = ROM_DATA_L;
+  92   2                      }
+  93   1          return i;
+  94   1      }
+  95          
+  96          UINT8 pd_config_read()
+  97          {
+  98   1          UINT8 pc;
+  99   1          
+ 100   1          ReadDataFlash(0x0, 1, &pc);
+ 101   1          return pc;
+ 102   1      }
+ 103          
+ 104          void pd_config_update(UINT8 pc)
+ 105          {
+ 106   1          WriteDataFlash(0x0, &pc, 1);
+ 107   1      }
+ 108          
+ 109          /*******************************************************************************/
+ 110          /*******************************************************************************/
+ 111          
+ 112          /* TX:  P3.1/PWM2/TXD */
+ 113          /* RX:  P3.0/PWM1/RXD */
+ 114          int pd_set(UINT8 value)
+ 115          {
+ 116   1          switch (value) {
+C51 COMPILER V9.00   MAIN                                                                  05/19/2025 14:37:56 PAGE 3   
+
+ 117   2              case (PD_5V):
+ 118   2                  CFG_1 = 1;
+ 119   2                  CFG_2 = 0;
+ 120   2                  CFG_3 = 0;
+ 121   2                  break;
+ 122   2              case (PD_9V):
+ 123   2                  CFG_1 = 0;
+ 124   2                  CFG_2 = 0;
+ 125   2                  CFG_3 = 0;
+ 126   2                  break;
+ 127   2              case (PD_12V):
+ 128   2                  CFG_1 = 0;
+ 129   2                  CFG_2 = 0;
+ 130   2                  CFG_3 = 1;
+ 131   2                  break;
+ 132   2              case (PD_15V):
+ 133   2                  CFG_1 = 0;
+ 134   2                  CFG_2 = 1;
+ 135   2                  CFG_3 = 1;
+ 136   2                  break;
+ 137   2              case (PD_20V):
+ 138   2                  CFG_1 = 0;
+ 139   2                  CFG_2 = 1;
+ 140   2                  CFG_3 = 0;
+ 141   2                  break;
+ 142   2              default:
+ 143   2                  break;
+ 144   2          }
+ 145   1      
+ 146   1          pd_verify(value);
+ 147   1          
+ 148   1          return 0;    
+ 149   1      }
+ 150          
+ 151          
+ 152              
+ 153           /* compare with adc value */
+ 154          int pd_verify(UINT8 value)
+ 155          {
+ 156   1          UINT8 r = 0;
+ 157   1      
+ 158   1          /* 100K 510K */
+ 159   1          UINT16 adc_value;
+ 160   1          adc_value = adc_read();
+ 161   1      
+ 162   1          printf("ADC_VALUE: %d (%ld mV)\n",(UINT16)adc_value, (((UINT32)(adc_value) * 20130)) / 256);
+ 163   1      
+ 164   1          switch (value) {
+ 165   2              case (PD_5V):
+ 166   2                  if (adc_value >= 57 && adc_value <= 69) {
+ 167   3                      r = 0;
+ 168   3                  } else {
+ 169   3                      r = 1;
+ 170   3                  }
+ 171   2                  break;
+ 172   2              case (PD_9V):
+ 173   2                  if (adc_value >= 108 && adc_value <= 120) {
+ 174   3                      r = 0;
+ 175   3                  } else {
+ 176   3                      r = 1;
+ 177   3                  }
+ 178   2                  break;
+C51 COMPILER V9.00   MAIN                                                                  05/19/2025 14:37:56 PAGE 4   
+
+ 179   2              case (PD_12V):
+ 180   2                  if (adc_value >= 146 && adc_value <= 158) {
+ 181   3                      r = 0;
+ 182   3                  } else {
+ 183   3                      r = 1;
+ 184   3                  }
+ 185   2                  break;
+ 186   2              case (PD_15V):
+ 187   2                  if (adc_value >= 184 && adc_value <= 197) {
+ 188   3                      r = 0;
+ 189   3                  } else {
+ 190   3                      r = 1;
+ 191   3                  }
+ 192   2                  break;
+ 193   2              case (PD_20V):
+ 194   2                  if (adc_value >= 247 && adc_value <= 260) {
+ 195   3                      r = 0;
+ 196   3                  } else {
+ 197   3                      r = 1;
+ 198   3                  }
+ 199   2                  break;
+ 200   2              default:            
+ 201   2                  break;
+ 202   2          }
+ 203   1          
+ 204   1          led_set(value, r);
+ 205   1          return r;
+ 206   1      }
+ 207          
+ 208          UINT16 count = 0;
+ 209          UINT8 blink = 0;
+ 210          UINT8 blink_value = PD_5V;
+ 211          
+ 212          void led_all_off()
+ 213          {
+ 214   1          LED_5V  = 0;
+ 215   1          LED_9V  = 0;
+ 216   1          LED_12V = 0;
+ 217   1          LED_15V = 0;
+ 218   1          LED_20V = 0;
+ 219   1      }
+ 220          
+ 221          void led_off(UINT8 value)
+ 222          {
+ 223   1          switch (value) {
+ 224   2              case (PD_5V):
+ 225   2                  LED_5V = 0;
+ 226   2                  break;
+ 227   2              case (PD_9V):
+ 228   2                  LED_9V = 0;
+ 229   2                  break;
+ 230   2              case (PD_12V):
+ 231   2                  LED_12V = 0;
+ 232   2                  break;
+ 233   2              case (PD_15V):
+ 234   2                  LED_15V = 0;
+ 235   2                  break;
+ 236   2              case (PD_20V):
+ 237   2                  LED_20V = 0;
+ 238   2                  break;
+ 239   2              default:
+ 240   2                  break;
+C51 COMPILER V9.00   MAIN                                                                  05/19/2025 14:37:56 PAGE 5   
+
+ 241   2          }    
+ 242   1      }
+ 243          
+ 244          void led_set(UINT8 value, UINT8 mode)
+ 245          {
+ 246   1      
+ 247   1          
+ 248   1          if (mode == 0) {
+ 249   2      #if 0            
+                      LED_5V  = 0;
+                      LED_9V  = 0;
+                      LED_12V = 0;
+                      LED_15V = 0;
+                      LED_20V = 0;
+              #endif
+ 256   2              
+ 257   2              blink = 0;
+ 258   2      
+ 259   2              switch (value) {
+ 260   3                  case (PD_5V):
+ 261   3                      LED_5V = 1;
+ 262   3                      break;
+ 263   3                  case (PD_9V):
+ 264   3                      LED_9V = 1;
+ 265   3                      break;
+ 266   3                  case (PD_12V):
+ 267   3                      LED_12V = 1;
+ 268   3                      break;
+ 269   3                  case (PD_15V):
+ 270   3                      LED_15V = 1;
+ 271   3                      break;
+ 272   3                  case (PD_20V):
+ 273   3                      LED_20V = 1;
+ 274   3                      break;
+ 275   3                  default:
+ 276   3                      break;
+ 277   3              }
+ 278   2          } else {
+ 279   2              blink = 1;
+ 280   2              blink_value = value;
+ 281   2          }
+ 282   1      }
+ 283          
+ 284          UINT16 adc_read()
+ 285          {
+ 286   1          UINT16 v;
+ 287   1      
+ 288   1          //printf("AIN%02x ",(UINT16)i);             
+ 289   1          ADC_ChannelSelect( 0 );
+ 290   1          ADC_START = 1;
+ 291   1          while(ADC_START);
+ 292   1          //printf("DATA: %d\n",(UINT16)ADC_DATA);
+ 293   1          v = (UINT16)ADC_DATA;
+ 294   1          return v;
+ 295   1      }
+ 296          
+ 297          
+ 298          
+ 299          void blink_handler()
+ 300          {
+ 301   1      
+ 302   1          switch (blink_value) {
+C51 COMPILER V9.00   MAIN                                                                  05/19/2025 14:37:56 PAGE 6   
+
+ 303   2              case (PD_5V):
+ 304   2                  LED_5V = !LED_5V;
+ 305   2                  break;
+ 306   2              case (PD_9V):
+ 307   2                  LED_9V = !LED_9V;
+ 308   2                  break;
+ 309   2              case (PD_12V):
+ 310   2                  LED_12V = !LED_12V;
+ 311   2                  break;
+ 312   2              case (PD_15V):
+ 313   2                  LED_15V = !LED_15V;
+ 314   2                  break;
+ 315   2              case (PD_20V):
+ 316   2                  LED_20V = !LED_20V;
+ 317   2                  break;
+ 318   2              default:
+ 319   2                  break;
+ 320   2          }
+ 321   1      }
+ 322          
+ 323          void timer0_int_handler()
+ 324          {
+ 325   1          if (blink) {
+ 326   2              blink_handler();
+ 327   2          }    
+ 328   1      }
+ 329          
+ 330          void timer1_int_handler()
+ 331          {
+ 332   1          if (blink) {
+ 333   2              blink_handler();
+ 334   2          }
+ 335   1      }
+ 336          
+ 337          UINT16 key_read()
+ 338          {
+ 339   1          UINT16 k;
+ 340   1          
+ 341   1          /* 1: release; 0: pressed */
+ 342   1          k = (UINT16)(KEY == 0 ? 0 : 1);
+ 343   1      
+ 344   1          //printf("KEY: %02x\r\n", k);
+ 345   1          return k;    
+ 346   1      }
+ 347          
+ 348          /* uart-0 baudrate: 57600 */
+ 349          main()
+ 350          {
+ 351   1          UINT16 i, curr_key, prev_key;
+ 352   1          UINT16 curr_pd = pd_config_read();
+ 353   1          UINT32 loop = 0;
+ 354   1      
+ 355   1              CfgFsys();      
+ 356   1              mInitSTDIO();
+ 357   1          printf("\r\nPDTricker system buildtime [" __TIME__ " " __DATE__ "] " "rev     1.0\r\n");
+ 358   1          printf("curr_pd: %d\n", curr_pd);
+ 359   1          
+ 360   1          if (curr_pd == 255) {
+ 361   2              pd_config_update(PD_5V);
+ 362   2              curr_pd = pd_config_read();
+ 363   2              printf("factory init: curr_pd: %d\n", curr_pd);
+ 364   2          }
+C51 COMPILER V9.00   MAIN                                                                  05/19/2025 14:37:56 PAGE 7   
+
+ 365   1              
+ 366   1      #if 0
+                  printf("T0 Test ...\n"); 
+                  mTimer0Clk12DivFsys();                                                         // 12MHz / 12 = 1MHz
+                  mTimer_x_ModInit(0,2);                                                     // timer-0, mode-2
+                  mTimer_x_SetData(0,0xc8c8);                                                // timer-0 data timer inter
+             -rupt freq: 1MHz / 0xc8 = 5KHz, every 0.2ms
+                  mTimer0RunCTL(1);                                                          // timer-0 start
+                  ET0 = 1;                                                                   // 
+                  EA = 1;
+              #endif
+ 375   1      
+ 376   1              Port1Cfg(0, 0);
+ 377   1          ADCInit( 0 );
+ 378   1      
+ 379   1          prev_key = curr_key = 1;
+ 380   1          led_all_off();
+ 381   1          pd_set(curr_pd);
+ 382   1      
+ 383   1          i = 0;
+ 384   1          
+ 385   1      #if 0
+                  while(1){
+                    for(i=0;i<128;i++){                                                            //????128??                
+                      len = WriteDataFlash(i,&i,1);                                          //?DataFlash??????i??i
+                      if(len != 1){
+                        printf("Write Err ? = %02x,m = %02x\n",j,(UINT16)m);                //?????                           
+                      }
+                    }
+                    for(i=0;i<128;i++){                                                      //?DataFlash??????i???
+                      len = ReadDataFlash(i,1,&m);
+                      if((len != 1) ||(m != i)){
+                        printf("Read Err ? = %02x, = %02x,addr =%02x ,?= %02x\n",j,(UINT16)(i*2),(UINT16)ROM_DATA_L,(UIN
+             -T16)m);                                
+                      }                                                                      //???????
+                    }  
+                    printf("$$OK %02x \n",j);                 
+                    j++;
+                    mDelaymS(100);                    
+                  }    
+              #endif
+ 404   1          
+ 405   1              while ( 1 ) {
+ 406   2      
+ 407   2              prev_key = curr_key;
+ 408   2              curr_key = key_read();
+ 409   2      
+ 410   2              if (prev_key == 1 && curr_key == 0) {
+ 411   3                  led_off(curr_pd);
+ 412   3                  curr_pd++;
+ 413   3                  if (curr_pd == PD_MAX) {
+ 414   4                      curr_pd = PD_5V;
+ 415   4                  }
+ 416   3      
+ 417   3                  printf("pd_set %d\n", curr_pd);
+ 418   3                  pd_set(curr_pd);
+ 419   3                  pd_config_update(curr_pd);
+ 420   3      
+ 421   3              }
+ 422   2      
+ 423   2              pd_verify(curr_pd);
+ 424   2      
+C51 COMPILER V9.00   MAIN                                                                  05/19/2025 14:37:56 PAGE 8   
+
+ 425   2              /* every 200ms */
+ 426   2              if (loop % 20 == 0) {
+ 427   3                  if (blink) {
+ 428   4                      blink_handler();
+ 429   4                  }
+ 430   3              }
+ 431   2      
+ 432   2              mDelaymS(10);
+ 433   2              loop++;
+ 434   2              
+ 435   2              }
+ 436   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1075    ----
+   CONSTANT SIZE    =    141    ----
+   XDATA SIZE       =      6      27
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
